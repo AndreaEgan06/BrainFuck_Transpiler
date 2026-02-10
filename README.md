@@ -15,6 +15,8 @@ The one cool feature I had built into it was that I could set a breakpoint in th
 
 ### Features
 
+- Infinitely long tape in both directions.
+- Tape cell values are [mod](https://en.wikipedia.org/wiki/Modular_arithmetic) 256.
 - Interprets any valid BF code character by character.
 - Has a visual step-by-step mode with breakpoints.
     - Both the place in execution of the BF code and the position of the tape can be seen at once.
