@@ -289,6 +289,9 @@ int main(int argc, char *argv[]) {
     // until the first instruction seen of that kind. (without executing it)
     // Inputing a lowercase 'f' will cause the interpreter to exit visual mode
     // and finish interpreting the rest of the code.
+    // Inputing a number greater than the currently displayed position (Pos: #)
+    // will cause the interpreter to execute until the code pointer head is at
+    // that position.
     while (!finish && ++codePtr < CODE_SIZE && code[codePtr]) {
         fgets(buffer, BUFFER_SIZE, stdin);
         switch (buffer[0]) {
@@ -307,10 +310,12 @@ int main(int argc, char *argv[]) {
                 break;
             default:
                 process(code, &codePtr, &tape, input);
-                if (isdigit(buffer[0])) {
+                if (isdigit(buffer[0]) && buffer[0] != '0') {
                     breakpoint = atoi(buffer);
-                    if (breakpoint > codePtr++)
-                    DO_UNTIL(codePtr <= breakpoint);
+                    if (breakpoint > codePtr + 1) {
+                        ++codePtr;
+                        DO_UNTIL(codePtr <= breakpoint);
+                    }
                 }
         }
         printState(code, codePtr, tape);
