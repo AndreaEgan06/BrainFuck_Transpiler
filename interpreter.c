@@ -4,20 +4,84 @@
 #include <stdlib.h>
 
 #define CODE_SIZE 50000
-#define TAPE_SIZE 30000
 #define INPUT_SIZE 20000
 #define PARENTHESES_STACK_SIZE 512
 #define BUFFER_SIZE 256
-#define MID_DISTANCE 60
-#define TAPE_END 30
-#define TAPE_START 0
 
+/// @brief A tape cell's value is an unsigned 8-bit integer.
+typedef unsigned char CellValue;
+
+/// @brief Defined a tape cell for an infinitely long
+///        tape in both directions.
+typedef struct TapeCell {
+    CellValue value;
+    struct TapeCell *left;
+    struct TapeCell *right;
+} TapeCell;
+
+/// @brief Creates a new tape cell not part of an existing tape.
+/// @return the tape cell
+static TapeCell *newTapeCell(void) {
+    TapeCell *result = malloc(sizeof(TapeCell));
+    result->value = 0;
+    result->left = NULL;
+    result->right = NULL;
+    return result;
+}
+
+/// @brief Adds a new tape cell as the right neighbor of the given tape cell.
+/// @param tape the given tape cell
+static void addRightTapeCell(TapeCell *tape) {
+    tape->right = newTapeCell();
+    tape->right->left = tape;
+}
+
+/// @brief Adds a new tape cell as the left neighbor of the given tape cell.
+/// @param tape the given tape cell
+static void addLeftTapeCell(TapeCell *tape) {
+    tape->left = newTapeCell();
+    tape->left->right = tape;
+}
+
+/// @brief Destroys the entire tape that a cell is a part of.
+/// @param tape to be destroyed
+static void freeTape(TapeCell *tape) {
+    TapeCell *leftCell = tape->left;
+    TapeCell *current = leftCell;
+    while (leftCell != NULL) {
+        leftCell = leftCell->left;
+        free(current);
+        current = leftCell;
+    }
+    TapeCell *rightCell = tape->right;
+    current = rightCell;
+    while (rightCell != NULL) {
+        rightCell = rightCell->right;
+        free(current);
+        current = rightCell;
+    }
+    free(tape);
+}
+
+/// The initial value for the tape index.
+#define STARTING_TAPE_INDEX 0
+
+/// The hypothetical index into the infinitely long tape.
+/// A value of 0 corresponds to the initial tape cell.
+/// Negative values correspond to tape cells to the left of the initial cell.
+/// Positive values correspond to tape cells to the right of the initial cell.
+static int theTapeIndex = STARTING_TAPE_INDEX;
+
+/// @brief Processes the command from the code at the given codeIndex using the given tape and input stream.
+/// @param code the BF code string
+/// @param codeIndex the address of the index into the BF code string
+/// @param tape the tape to execute the code on
+/// @param input the input stream
 void process(
         char *code,
         int *codeIndex,
-        unsigned char *tape,
-        int *index,
-        char *input) {
+        TapeCell **tape,
+        CellValue *input) {
     // Static variables
     static int parenthesesStack[PARENTHESES_STACK_SIZE];
     static int parenthesesStackCounter = 0;
@@ -26,19 +90,27 @@ void process(
     // Main switch statement
     switch (code[*codeIndex]) {
         case '+':
-            tape[*index]++;
+            (*tape)->value++;
             break;
         case '-':
-            tape[*index]--;
+            (*tape)->value--;
             break;
         case '>':
-            ++(*index);
+            if ((*tape)->right == NULL) {
+                addRightTapeCell(*tape);
+            }
+            (*tape) = (*tape)->right;
+            ++theTapeIndex;
             break;
         case '<':
-            --(*index);
+            if ((*tape)->left == NULL) {
+                addLeftTapeCell(*tape);
+            }
+            (*tape) = (*tape)->left;
+            --theTapeIndex;
             break;
         case '.':
-            printf("%d ", tape[*index]);
+            printf("%d ", (*tape)->value);
             break;
         case ',':
             while (isdigit(input[inputPtr])) {
@@ -47,10 +119,10 @@ void process(
             while (!isdigit(input[inputPtr]) && input[inputPtr] != '-') {
                 ++inputPtr;
             }
-            tape[*index] = atoi(&input[inputPtr]);
+            (*tape)->value = atoi((const char *) &input[inputPtr]);
             break;
         case '[':
-            if (tape[*index]) {
+            if ((*tape)->value != 0) {
                 if (parenthesesStack[parenthesesStackCounter] != *codeIndex) {
                     parenthesesStack[++parenthesesStackCounter] = *codeIndex;
                 }
@@ -69,7 +141,7 @@ void process(
             }
             break;
         case ']':
-            if (tape[*index]) {
+            if ((*tape)->value != 0) {
                 *codeIndex = parenthesesStack[parenthesesStackCounter] - 1;
             } else {
                 --parenthesesStackCounter;
@@ -78,8 +150,25 @@ void process(
     }
 }
 
-void printCode(char *code, int codePtr, unsigned char *tape, int index) {
-    putchar('\n');
+/// The length of the visible tape when printed.
+#define TAPE_LENGTH 28
+
+/// The distance to the middle of the stream of printed BF code.
+#define MID_DISTANCE 60
+
+/// @brief Prints where the BF code is in execution, and where the tape header is on the tape.
+/// @param code the BF code
+/// @param codePtr points to the current instruction in the code being executed
+/// @param tape the current tape cell
+void printState(char *code, int codePtr, TapeCell *tape) {
+    // Useful to know where the tape was last printed from.
+    static int prevTapeStart = STARTING_TAPE_INDEX;
+
+    // The array containing the values that will be
+    static CellValue tapeValues[TAPE_LENGTH];
+
+    // Print the code
+    printf("\n\nPos: %d\n", codePtr);
     int i = codePtr < MID_DISTANCE ? 0 : codePtr - MID_DISTANCE;
     int j = codePtr < MID_DISTANCE ? 2 * MID_DISTANCE : codePtr + MID_DISTANCE;
     for (; i < j && code[i] && code[i] != '\n'; ++i) {
@@ -89,24 +178,61 @@ void printCode(char *code, int codePtr, unsigned char *tape, int index) {
     for (i = 0; i <= (codePtr < MID_DISTANCE ? codePtr : MID_DISTANCE); ++i) {
         putchar(' ');
     }
-    printf("^\nPos: %d\n ", codePtr);
-    for (i = 0; i <= index; ++i) {
-        printf(i == index ? "v" : "    ");
-        if (i == index) break;
+    printf("^\n");
+
+    // Update the prev tape start if necessary.
+    if (theTapeIndex < prevTapeStart) {
+        prevTapeStart = theTapeIndex;
+    } else if (theTapeIndex >= prevTapeStart + TAPE_LENGTH) {
+        prevTapeStart += theTapeIndex - (prevTapeStart + TAPE_LENGTH);
     }
-    putchar('\n');
-    for (i = TAPE_START; i < TAPE_END; ++i) {
-        printf("%.03d ", tape[i]);
+
+    // Fill in the tapeValues array with teh values to be printed.
+    TapeCell *cell = tape;
+    const int valuesIndex = theTapeIndex - prevTapeStart;
+    for (i = valuesIndex; i >= 0; --i) {
+        if (cell != NULL) {
+            tapeValues[i] = cell->value;
+            cell = cell->left;
+        } else {
+            tapeValues[i] = 0;
+        }
     }
+    cell = tape->right;
+    for (i = valuesIndex + 1; i < TAPE_LENGTH; ++i) {
+        if (cell != NULL) {
+            tapeValues[i] = cell->value;
+            cell = cell->right;
+        } else {
+            tapeValues[i] = 0;
+        }
+    }
+  
+    // Print the tape pointer and the tape.
+    for (i = 0; i <= valuesIndex; ++i) {
+        printf("    ");
+    }
+    printf(" v\n... ");
+    for (i = 0; i < TAPE_LENGTH; ++i) {
+        printf("%.03d ", tapeValues[i]);
+    }
+    printf("...\n");
+
+    // Prompt the user for the next debug command.
     printf("\nCMD: ");
 }
 
+/// Processes the code until a certain condition is satisfied.
 #define DO_UNTIL(condition)                                                   \
     do {                                                                      \
-        process(code, &codePtr, tape, &index, input);                         \
+        process(code, &codePtr, &tape, input);                                \
     } while (++codePtr < CODE_SIZE && code[codePtr] && (condition));          \
     --codePtr
 
+/// @brief Reades a file into a given buffer.
+/// @param fileName the name of the file to read
+/// @param buffer the buffer to read into
+/// @return true if succesful
 bool readFile(char *fileName, char *buffer) {
     bool result = true;
     FILE *filePtr = fopen(fileName, "r");
@@ -119,29 +245,50 @@ bool readFile(char *fileName, char *buffer) {
     return result;
 }
 
+/// Wrapper macro around the readFile function that gives an error mesage
+/// and crashes the program if there was an error.
 #define READ_FILE(fileName, bufferName)                                       \
-    if (!readFile((fileName), (bufferName))) {                                \
+    if (!readFile((fileName), (char *) (bufferName))) {                       \
         printf("There was an error opening %s\n", (fileName));                \
-        return -1;                                                            \
+        return EXIT_FAILURE;                                                  \
     }
 
+/// @brief The main function :)
+/// @param argc number of cmd line args (which must be at most 2)
+/// @param argv cmd lines args
+/// @return EXIT_SUCCESS if nothing goes wrong, otherwise EXIT_FAILURE
 int main(int argc, char *argv[]) {
+    // Get cmd line args (a potential breakpoint that if reached will
+    // make the interpreter go into visual mode displaying the code
+    // and the tape).
     if (argc > 2) {
-        printf("Usage: ./interpreter code_file [breakpoint]\n");
-        return -1;
+        printf("Usage: ./interpreter [breakpoint]\n");
+        return EXIT_FAILURE;
     }
     int breakpoint = argc < 2 ? CODE_SIZE : atoi(argv[1]);
-    char code[CODE_SIZE], input[INPUT_SIZE];
+
+    char code[CODE_SIZE];
+    CellValue input[INPUT_SIZE];
     READ_FILE("code.txt", code);
     READ_FILE("input.txt", input);
     char buffer[BUFFER_SIZE];
-    unsigned char tape[TAPE_SIZE] = {0};
-    int index = 0, codePtr = 0;
+    TapeCell *tape = newTapeCell();
+
+    // Process the code up until the breakpoint.
+    int codePtr = 0;
     DO_UNTIL(codePtr <= breakpoint);
+
+    // If the code is not done being processed, then print the current state.
     bool finish = !code[codePtr + 1];
     if (!finish) {
-        printCode(code, codePtr, tape, index);
+        printState(code, codePtr, tape);
     }
+
+    // Main "debug" loop for the visual mode of the interpreter.
+    // Inputing a valid BF instruction will cause the code to execute up
+    // until the first instruction seen of that kind. (without executing it)
+    // Inputing a lowercase 'f' will cause the interpreter to exit visual mode
+    // and finish interpreting the rest of the code.
     while (!finish && ++codePtr < CODE_SIZE && code[codePtr]) {
         fgets(buffer, BUFFER_SIZE, stdin);
         switch (buffer[0]) {
@@ -157,19 +304,26 @@ int main(int argc, char *argv[]) {
                 break;
             case 'f':
                 finish = true;
+                break;
             default:
-                process(code, &codePtr, tape, &index, input);
+                process(code, &codePtr, &tape, input);
                 if (isdigit(buffer[0])) {
                     breakpoint = atoi(buffer);
                     if (breakpoint > codePtr++)
                     DO_UNTIL(codePtr <= breakpoint);
                 }
         }
-        printCode(code, codePtr, tape, index);
+        printState(code, codePtr, tape);
     }
+
+    // Finish interpreting the code
     while (++codePtr < CODE_SIZE && code[codePtr]) {
-        process(code, &codePtr, tape, &index, input);
+        process(code, &codePtr, &tape, input);
     }
     printf("\nDone!\n");
-    return 0;
+
+    // Free the tape
+    freeTape(tape);
+
+    return EXIT_SUCCESS;
 }
