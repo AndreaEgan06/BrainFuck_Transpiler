@@ -191,10 +191,11 @@ void printState(char *code, int codePtr, TapeCell *tape) {
     printf("^\n");
 
     // Update the prev tape start if necessary.
+    printf("The tape index is: %d and the prevTapeStart is %d\n", theTapeIndex, prevTapeStart);
     if (theTapeIndex < prevTapeStart) {
         prevTapeStart = theTapeIndex;
-    } else if (theTapeIndex >= prevTapeStart + TAPE_LENGTH) {
-        prevTapeStart += theTapeIndex - (prevTapeStart + TAPE_LENGTH);
+    } else if (theTapeIndex >= prevTapeStart + TAPE_LENGTH - 1) {
+        prevTapeStart = theTapeIndex - TAPE_LENGTH + 1;
     }
 
     // Fill in the tapeValues array with teh values to be printed.
