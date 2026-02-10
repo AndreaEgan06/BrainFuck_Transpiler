@@ -6,7 +6,7 @@
 #define CODE_SIZE 50000
 #define INPUT_SIZE 20000
 #define PARENTHESES_STACK_SIZE 512
-#define BUFFER_SIZE 256
+#define BUFFER_SIZE 1024
 
 /// @brief A tape cell's value is an unsigned 8-bit integer.
 typedef unsigned char CellValue;
@@ -72,6 +72,12 @@ static void freeTape(TapeCell *tape) {
 /// Positive values correspond to tape cells to the right of the initial cell.
 static int theTapeIndex = STARTING_TAPE_INDEX;
 
+/// The output buffer containing the results of having executed the BF code.
+static char outputBuffer[BUFFER_SIZE] = {0};
+
+/// The output buffer index to indicate how much of the buffer has been used up.
+static unsigned int outputBufferIndex = 0;
+
 /// @brief Processes the command from the code at the given codeIndex using the given tape and input stream.
 /// @param code the BF code string
 /// @param codeIndex the address of the index into the BF code string
@@ -86,7 +92,7 @@ void process(
     static int parenthesesStack[PARENTHESES_STACK_SIZE];
     static int parenthesesStackCounter = 0;
     static int inputPtr = 0;
-
+    
     // Main switch statement
     switch (code[*codeIndex]) {
         case '+':
@@ -110,7 +116,7 @@ void process(
             --theTapeIndex;
             break;
         case '.':
-            printf("%d ", (*tape)->value);
+            outputBufferIndex += snprintf(&(outputBuffer[outputBufferIndex]), BUFFER_SIZE, "%d ", (*tape)->value);
             break;
         case ',':
             while (isdigit(input[inputPtr])) {
@@ -167,8 +173,12 @@ void printState(char *code, int codePtr, TapeCell *tape) {
     // The array containing the values that will be
     static CellValue tapeValues[TAPE_LENGTH];
 
+    // Print the results so far
+    printf("\nResults: ");
+    puts(outputBuffer);
+
     // Print the code
-    printf("\n\nPos: %d\n", codePtr);
+    printf("Pos: %d\n", codePtr);
     int i = codePtr < MID_DISTANCE ? 0 : codePtr - MID_DISTANCE;
     int j = codePtr < MID_DISTANCE ? 2 * MID_DISTANCE : codePtr + MID_DISTANCE;
     for (; i < j && code[i] && code[i] != '\n'; ++i) {
@@ -219,7 +229,7 @@ void printState(char *code, int codePtr, TapeCell *tape) {
     printf("...\n");
 
     // Prompt the user for the next debug command.
-    printf("\nCMD: ");
+    printf("CMD: ");
 }
 
 /// Processes the code until a certain condition is satisfied.
@@ -286,13 +296,12 @@ int main(int argc, char *argv[]) {
 
     // Main "debug" loop for the visual mode of the interpreter.
     // Inputing a valid BF instruction will cause the code to execute up
-    // until the first instruction seen of that kind. (without executing it)
+    // until the first instruction seen of that kind (without executing it).
     // Inputing a lowercase 'f' will cause the interpreter to exit visual mode
     // and finish interpreting the rest of the code.
     // Inputing a number greater than the currently displayed position (Pos: #)
-    // will cause the interpreter to execute until the code pointer head is at
-    // that position.
-    while (!finish && ++codePtr < CODE_SIZE && code[codePtr]) {
+    // will set that number as the new breakpoint and execute up until that breakpoint.
+    while (++codePtr < CODE_SIZE && code[codePtr]) {
         fgets(buffer, BUFFER_SIZE, stdin);
         switch (buffer[0]) {
             case '+':
@@ -318,6 +327,7 @@ int main(int argc, char *argv[]) {
                     }
                 }
         }
+        if (finish) break;
         printState(code, codePtr, tape);
     }
 
@@ -325,7 +335,10 @@ int main(int argc, char *argv[]) {
     while (++codePtr < CODE_SIZE && code[codePtr]) {
         process(code, &codePtr, &tape, input);
     }
-    printf("\nDone!\n");
+
+    printf("Results: ");
+    puts(outputBuffer);
+    printf("Done!\n");
 
     // Free the tape
     freeTape(tape);
