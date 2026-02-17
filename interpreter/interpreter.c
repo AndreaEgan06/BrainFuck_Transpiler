@@ -191,7 +191,6 @@ void printState(char *code, int codePtr, TapeCell *tape) {
     printf("^\n");
 
     // Update the prev tape start if necessary.
-    printf("The tape index is: %d and the prevTapeStart is %d\n", theTapeIndex, prevTapeStart);
     if (theTapeIndex < prevTapeStart) {
         prevTapeStart = theTapeIndex;
     } else if (theTapeIndex >= prevTapeStart + TAPE_LENGTH - 1) {
@@ -234,17 +233,17 @@ void printState(char *code, int codePtr, TapeCell *tape) {
 }
 
 /// Processes the code until a certain condition is satisfied.
-#define DO_UNTIL(condition)                                                   \
+#define PROCESS_UNTIL(condition)                                              \
     do {                                                                      \
         process(code, &codePtr, &tape, input);                                \
     } while (++codePtr < CODE_SIZE && code[codePtr] && (condition));          \
     --codePtr
 
-/// @brief Reades a file into a given buffer.
+/// @brief Reads a file into a given buffer.
 /// @param fileName the name of the file to read
 /// @param buffer the buffer to read into
 /// @return true if succesful
-bool readFile(char *fileName, char *buffer) {
+static bool _readFile(char *fileName, char *buffer) {
     bool result = true;
     FILE *filePtr = fopen(fileName, "r");
     if (!fgets(buffer, CODE_SIZE, filePtr)) {
@@ -259,10 +258,14 @@ bool readFile(char *fileName, char *buffer) {
 /// Wrapper macro around the readFile function that gives an error mesage
 /// and crashes the program if there was an error.
 #define READ_FILE(fileName, bufferName)                                       \
-    if (!readFile((fileName), (char *) (bufferName))) {                       \
+    if (!_readFile((fileName), (char *) (bufferName))) {                      \
         printf("There was an error opening %s\n", (fileName));                \
         return EXIT_FAILURE;                                                  \
     }
+
+#define code_file_arg argv[1]
+#define input_file_arg argv[2]
+#define breakpoint_arg argv[3]
 
 /// @brief The main function :)
 /// @param argc number of cmd line args (which must be at most 2)
@@ -272,22 +275,28 @@ int main(int argc, char *argv[]) {
     // Get cmd line args (a potential breakpoint that if reached will
     // make the interpreter go into visual mode displaying the code
     // and the tape).
-    if (argc > 2) {
-        printf("Usage: ./interpreter [breakpoint]\n");
-        return EXIT_FAILURE;
-    }
-    int breakpoint = argc < 2 ? CODE_SIZE : atoi(argv[1]);
-
+    int breakpoint = CODE_SIZE;
     char code[CODE_SIZE];
     CellValue input[INPUT_SIZE];
-    READ_FILE("code.txt", code);
-    READ_FILE("input.txt", input);
+
+    switch (argc) {
+        case 4:
+            breakpoint = atoi(breakpoint_arg);
+        case 3:
+            READ_FILE(code_file_arg, code);
+            READ_FILE(input_file_arg, input);
+            break;
+        default:
+            fprintf(stderr, "Usage: ./interpreter code_file input_file [breakpoint]\n");
+            return EXIT_FAILURE;
+    }
+
     char buffer[BUFFER_SIZE];
     TapeCell *tape = newTapeCell();
 
     // Process the code up until the breakpoint.
     int codePtr = 0;
-    DO_UNTIL(codePtr <= breakpoint);
+    PROCESS_UNTIL(codePtr <= breakpoint);
 
     // If the code is not done being processed, then print the current state.
     bool finish = !code[codePtr + 1];
@@ -313,7 +322,7 @@ int main(int argc, char *argv[]) {
             case ']':
             case '.':
             case ',':
-                DO_UNTIL(code[codePtr] != buffer[0]);
+                PROCESS_UNTIL(code[codePtr] != buffer[0]);
                 break;
             case 'f':
                 finish = true;
@@ -324,7 +333,7 @@ int main(int argc, char *argv[]) {
                     breakpoint = atoi(buffer);
                     if (breakpoint > codePtr + 1) {
                         ++codePtr;
-                        DO_UNTIL(codePtr <= breakpoint);
+                        PROCESS_UNTIL(codePtr <= breakpoint);
                     }
                 }
         }
